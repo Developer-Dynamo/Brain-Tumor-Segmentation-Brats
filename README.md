@@ -1,234 +1,230 @@
-# Segmentation de tumeurs cérébrales — BraTS 2020 (MONAI / SegResNet)
-
-Pipeline complet d'entraînement, d'inférence et d'analyse interactive (Streamlit) pour segmenter automatiquement les tumeurs cérébrales à partir des 4 modalités IRM (FLAIR, T1, T1ce, T2). Le projet produit des masques au format BraTS (labels 0, 1, 2, 4), une visualisation 2D/3D et une analyse volumétrique de la tumeur.
-
-> **Avertissement.** Ce projet est un travail de recherche à but pédagogique. Le modèle n'a pas été validé cliniquement et ses résultats ne remplacent pas l'avis d'un radiologue.
-
+# Brain Tumor Segmentation — BraTS 2020 (MONAI / SegResNet)
+ 
+End-to-end pipeline for training, inference and interactive analysis (Streamlit) to automatically segment brain tumors from the 4 MRI modalities (FLAIR, T1, T1ce, T2). The project produces masks in BraTS format (labels 0, 1, 2, 4), a 2D/3D visualization and a volumetric analysis of the tumor.
+ 
+> **Disclaimer.** This project is research work for educational purposes. The model has not been clinically validated and its results do not replace a radiologist's opinion.
+ 
 ---
-
-## Aperçu
-
-### 1. Chargement du patient
-![Interface de chargement des 4 modalités IRM](assets/dashboard_input.png)
-
-### 2. Comparaison des 4 modalités
-![Coupe axiale en FLAIR, T1, T1CE et T2 avec la segmentation superposée](assets/modalities_view.png)
-
-### 3. Reconstruction 3D
-![Cerveau 3D translucide avec œdème, noyau nécrotique et tumeur rehaussée](assets/3d_brain.png)
-
-### 4. Analyse volumétrique
-![Volumes, définitions et rôles des trois compartiments tumoraux](assets/volumetric_analysis.png)
-
+ 
+## Overview
+ 
+### 1. Loading a patient
+![Interface for loading the 4 MRI modalities](assets/dashboard_input.png)
+ 
+### 2. Comparing the 4 modalities
+![Axial slice in FLAIR, T1, T1CE and T2 with the segmentation overlaid](assets/modalities_view.png)
+ 
+### 3. 3D reconstruction
+![Translucent 3D brain with edema, necrotic core and enhancing tumor](assets/3d_brain.png)
+ 
+### 4. Volumetric analysis
+![Volumes, definitions and roles of the three tumor compartments](assets/volumetric_analysis.png)
+ 
 ---
-
-## Sommaire
-
-1. [Environnement et installation](#1-environnement-et-installation)
-2. [Structure du projet et des données](#2-structure-du-projet-et-des-données)
-3. [Entraînement](#3-entraînement-trainpy)
-4. [Performances et résultats](#4-performances-et-résultats)
-5. [Inférence en ligne de commande](#5-inférence-en-ligne-de-commande-inferencepy)
-6. [Dashboard Streamlit](#6-dashboard-streamlit-dashboardpy)
-7. [Mapping des labels BraTS](#7-mapping-des-labels-brats)
-8. [Limites et perspectives](#8-limites-et-perspectives)
-9. [Remarques techniques](#9-remarques-techniques)
-10. [Données, licence et références](#10-données-licence-et-références)
-
+ 
+## Table of Contents
+ 
+1. [Environment and installation](#1-environment-and-installation)
+2. [Project and data structure](#2-project-and-data-structure)
+3. [Training](#3-training-trainpy)
+4. [Performance and results](#4-performance-and-results)
+5. [Command-line inference](#5-command-line-inference-inferencepy)
+6. [Streamlit dashboard](#6-streamlit-dashboard-dashboardpy)
+7. [BraTS label mapping](#7-brats-label-mapping)
+8. [Limitations and future work](#8-limitations-and-future-work)
+9. [Technical notes](#9-technical-notes)
+10. [Data, license and references](#10-data-license-and-references)
 ---
-
-## 1. Environnement et installation
-
-L'entraînement et la validation ont été exécutés dans l'environnement suivant :
-
-| Élément | Valeur |
+ 
+## 1. Environment and installation
+ 
+Training and validation were run in the following environment:
+ 
+| Item | Value |
 |---|---|
-| GPU | NVIDIA Tesla T4 (16 Go de VRAM) |
+| GPU | NVIDIA Tesla T4 (16 GB VRAM) |
 | PyTorch | 2.11.0+cu130 |
-| Framework 3D | MONAI |
-
+| 3D framework | MONAI |
+ 
 ### Installation
-
+ 
 ```bash
 python -m venv venv
-source venv/bin/activate        # Windows : venv\Scripts\activate
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
-
-Toutes les dépendances, dashboard compris (`streamlit`, `plotly`, `matplotlib`, `scipy`, `scikit-image`), sont listées dans `requirements.txt`.
-
+ 
+All dependencies, including those of the dashboard (`streamlit`, `plotly`, `matplotlib`, `scipy`, `scikit-image`), are listed in `requirements.txt`.
+ 
 ---
-
-## 2. Structure du projet et des données
-
-### Arborescence du dépôt
-
+ 
+## 2. Project and data structure
+ 
+### Repository layout
+ 
 ```text
 .
-├── data_utils.py            # Chargement multimodal et conversion des classes BraTS
-├── train.py                 # Entraînement SegResNet avec gestion de checkpoints
-├── inference.py             # Inférence en ligne de commande (NIfTI)
-├── export_utils.py          # Export du masque en NIfTI (grille de l'IRM d'origine)
-├── dashboard.py             # Application Streamlit (visualisation 2D/3D et volumétrie)
-├── requirements.txt         # Dépendances du projet
+├── data_utils.py            # Multimodal loading and BraTS class conversion
+├── train.py                 # SegResNet training with checkpoint management
+├── inference.py             # Command-line inference (NIfTI)
+├── export_utils.py          # Mask export to NIfTI (original MRI grid)
+├── dashboard.py             # Streamlit app (2D/3D visualization and volumetry)
+├── requirements.txt         # Project dependencies
 ├── .streamlit/
-│   └── config.toml          # Thème du dashboard (voir section 6)
-├── assets/                  # Captures d'écran affichées dans ce README
+│   └── config.toml          # Dashboard theme (see section 6)
+├── assets/                  # Screenshots shown in this README
 │   ├── dashboard_input.png
 │   ├── modalities_view.png
 │   ├── 3d_brain.png
 │   └── volumetric_analysis.png
 ├── runs/
-│   └── best_metric_model.pth   # Meilleur modèle (sauvegardé pendant l'entraînement)
-└── test/                    # Patients de test (non versionné, voir ci-dessous)
-    ├── image_test/          # IRM : 4 modalités par patient
-    └── mask_test/           # Segmentations de référence + masques générés par le dashboard
+│   └── best_metric_model.pth   # Best model (saved during training)
+└── test/                    # Test patients (not versioned, see below)
+    ├── image_test/          # MRI: 4 modalities per patient
+    └── mask_test/           # Reference segmentations + masks generated by the dashboard
 ```
-
-> Le dossier `runs/` du dépôt ne contient que le meilleur modèle. Lors d'un nouvel entraînement, `train.py` y écrit aussi `last_checkpoint.pth`, `split.json` et `tensorboard/` (voir section 3).
-
-### Répartition des données
-
-Les patients de BraTS 2020 (version disponible sur Kaggle) sont répartis en deux groupes :
-
-| Dossier | Contenu | Utilisation |
+ 
+> The repository's `runs/` folder only contains the best model. During a new training run, `train.py` also writes `last_checkpoint.pth`, `split.json` and `tensorboard/` there (see section 3).
+ 
+### Data split
+ 
+The BraTS 2020 patients (version available on Kaggle) are split into two groups:
+ 
+| Folder | Content | Use |
 |---|---|---|
-| `donnees/` | 100 patients | Entraînement (85 patients) et validation (15 patients) |
-| `test/` | Les patients restants | Jamais vus pendant l'entraînement ni la validation : sert à essayer l'application et à évaluer le modèle |
-
-### Données d'entraînement (`donnees/`, non versionné)
-
+| `donnees/` | 100 patients | Training (85 patients) and validation (15 patients) |
+| `test/` | The remaining patients | Never seen during training or validation: used to try the application and evaluate the model |
+ 
+### Training data (`donnees/`, not versioned)
+ 
 ```text
 donnees/
 ├── images/      # BraTS20_Training_XXX_flair.nii, _t1.nii, _t1ce.nii, _t2.nii
 └── masks/       # BraTS20_Training_XXX_seg.nii
 ```
-
-Ce dossier est indiqué à `train.py` avec `--data_dir`. `data_utils.py` détecte aussi automatiquement l'organisation « un dossier par patient » (`BraTS20_Training_XXX/` contenant les 4 modalités et le fichier `_seg`), au format officiel de BraTS.
-
-### Patients de test (`test/`, non versionné)
-
-- `test/image_test/` : les IRM des patients de test (4 modalités par patient), à déposer dans le dashboard.
-- `test/mask_test/` : les segmentations de référence de la base Kaggle (`BraTS20_Training_XXX_seg.nii`). Le dashboard y enregistre aussi une copie du masque généré, sous le nom `BraTS20_Training_XXX_seg_pred.nii.gz` ; le suffixe `_pred` permet de distinguer la prédiction de la référence.
-
-Chaque fichier IRM pèse environ 17 Mo (près de 70 Mo par patient) : le dossier `test/` n'est donc pas versionné dans Git. Pour le recréer, téléchargez BraTS 2020 sur Kaggle, puis copiez les 4 modalités de patients absents de `donnees/` dans `image_test/` et leur fichier `_seg` dans `mask_test/`.
-
+ 
+This folder is passed to `train.py` with `--data_dir`. `data_utils.py` also automatically detects the "one folder per patient" layout (`BraTS20_Training_XXX/` containing the 4 modalities and the `_seg` file), which is the official BraTS format.
+ 
+### Test patients (`test/`, not versioned)
+ 
+- `test/image_test/`: MRIs of the test patients (4 modalities per patient), to be uploaded in the dashboard.
+- `test/mask_test/`: reference segmentations from the Kaggle dataset (`BraTS20_Training_XXX_seg.nii`). The dashboard also saves a copy of the generated mask there, named `BraTS20_Training_XXX_seg_pred.nii.gz`; the `_pred` suffix distinguishes the prediction from the reference.
+Each MRI file weighs about 17 MB (nearly 70 MB per patient), so the `test/` folder is not versioned in Git. To recreate it, download BraTS 2020 from Kaggle, then copy the 4 modalities of patients not in `donnees/` into `image_test/` and their `_seg` file into `mask_test/`.
+ 
 ---
-
-## 3. Entraînement (`train.py`)
-
-L'entraînement repose sur l'architecture **SegResNet** de MONAI avec une fonction de perte composite **DiceCELoss**. Le réseau prédit 3 canaux superposés (approche multi-label, activation sigmoïde), puis ces canaux sont convertis en labels BraTS (voir section 7).
-
+ 
+## 3. Training (`train.py`)
+ 
+Training relies on MONAI's **SegResNet** architecture with a composite **DiceCELoss** loss function. The network predicts 3 overlapping channels (multi-label approach, sigmoid activation), which are then converted to BraTS labels (see section 7).
+ 
 ```bash
 python train.py \
-    --data_dir /chemin/vers/donnees \
+    --data_dir /path/to/donnees \
     --output_dir ./runs \
     --epochs 90 \
     --batch_size 1 \
     --patch_size 128 128 128
 ```
-
-### Options principales
-
-| Option | Valeur par défaut | Rôle |
+ 
+### Main options
+ 
+| Option | Default | Purpose |
 |---|---|---|
-| `--epochs` | 150 | Nombre d'époques (90 pour le modèle présenté ici). |
-| `--lr` | 1e-4 | Learning rate initial. |
-| `--batch_size` | 1 | Nombre de patients par itération (chacun fournit 2 patchs, voir plus bas). |
-| `--patch_size` | 128 128 128 | Taille des patchs 3D. |
-| `--val_interval` | 5 | Validation toutes les 5 époques. |
-| `--val_fraction` | 0.15 | Part du jeu de données réservée à la validation. |
-| `--seed` | 42 | Graine aléatoire (séparation des données et reproductibilité). |
-| `--cache_mode` | `ram` | `ram` : `CacheDataset` (`--cache_rate` pour la proportion en mémoire, 1.0 par défaut). `disk` : `PersistentDataset`, prétraitement mis en cache sur le disque. |
-| `--cache_dir` | `/content/cache` | Dossier du cache disque (chemin pensé pour Google Colab, à adapter en local). |
-| `--num_workers` | 2 | Nombre de processus de chargement. |
-| `--resume` | — | Reprend l'entraînement depuis `last_checkpoint.pth` (modèle, optimiseur, scheduler, scaler, époque et meilleur score). |
-
-Un checkpoint est sauvegardé à chaque époque, par écriture atomique, ce qui évite un fichier corrompu si la session est interrompue.
-
-### Données d'entraînement
-
-Le dossier `donnees/` contient 100 patients. Avec `--val_fraction 0.15` et la graine 42, la séparation donne **85 patients en entraînement et 15 en validation**. La liste exacte est écrite dans `split.json` (dossier de sortie, généré à chaque entraînement et non inclus dans le dépôt), ce qui permet de refaire le même découpage.
-
+| `--epochs` | 150 | Number of epochs (90 for the model presented here). |
+| `--lr` | 1e-4 | Initial learning rate. |
+| `--batch_size` | 1 | Number of patients per iteration (each provides 2 patches, see below). |
+| `--patch_size` | 128 128 128 | Size of the 3D patches. |
+| `--val_interval` | 5 | Validation every 5 epochs. |
+| `--val_fraction` | 0.15 | Share of the dataset reserved for validation. |
+| `--seed` | 42 | Random seed (data split and reproducibility). |
+| `--cache_mode` | `ram` | `ram`: `CacheDataset` (`--cache_rate` for the fraction kept in memory, 1.0 by default). `disk`: `PersistentDataset`, preprocessing cached on disk. |
+| `--cache_dir` | `/content/cache` | Disk cache folder (path designed for Google Colab, adapt it locally). |
+| `--num_workers` | 2 | Number of loading processes. |
+| `--resume` | — | Resumes training from `last_checkpoint.pth` (model, optimizer, scheduler, scaler, epoch and best score). |
+ 
+A checkpoint is saved at every epoch with an atomic write, which avoids a corrupted file if the session is interrupted.
+ 
+### Training data
+ 
+The `donnees/` folder contains 100 patients. With `--val_fraction 0.15` and seed 42, the split gives **85 training patients and 15 validation patients**. The exact list is written to `split.json` (output folder, generated at each training run and not included in the repository), which makes it possible to reproduce the same split.
+ 
 ### Configuration
-
-| Paramètre | Valeur |
+ 
+| Parameter | Value |
 |---|---|
-| Architecture | SegResNet (MONAI) : `blocks_down=[1, 2, 2, 4]`, `blocks_up=[1, 1, 1]`, `init_filters=16`, `dropout_prob=0.2` |
-| Entrées / sorties | 4 canaux (FLAIR, T1, T1ce, T2) → 3 canaux (TC, WT, ET) |
-| Perte | `DiceCELoss` avec sigmoïde (`squared_pred=True`, `smooth_nr=smooth_dr=1e-5`) |
-| Optimiseur | AdamW, learning rate 1e-4, weight decay 1e-5 |
-| Scheduler | `CosineAnnealingLR` sur toute la durée de l'entraînement (`T_max = epochs`) |
-| Précision | Mixte (AMP : `autocast` + `GradScaler`), activée automatiquement sur GPU CUDA |
-| Patchs | 128 × 128 × 128, 2 patchs par patient, tirés à parts égales sur la tumeur et hors tumeur (`RandCropByPosNegLabeld`, `pos=1`, `neg=1`) |
-| Validation | Fenêtre glissante 128³, recouvrement 50 %, seuil 0,5, Dice par région (TC, WT, ET) |
-
-### Prétraitement
-
-Appliqué à l'entraînement, à la validation, à l'inférence et dans le dashboard :
-
-1. chargement des 4 modalités dans l'ordre FLAIR, T1, T1ce, T2 ;
-2. orientation RAS ;
-3. rééchantillonnage à 1 mm isotrope ;
-4. normalisation de l'intensité par modalité, sur les voxels non nuls ;
-5. recadrage sur le cerveau (`CropForegroundd`).
-
-À l'entraînement, le masque de référence suit les mêmes étapes et est converti en 3 canaux (TC, WT, ET).
-
-### Augmentation de données (entraînement uniquement)
-
-| Transformation | Paramètres |
+| Architecture | SegResNet (MONAI): `blocks_down=[1, 2, 2, 4]`, `blocks_up=[1, 1, 1]`, `init_filters=16`, `dropout_prob=0.2` |
+| Inputs / outputs | 4 channels (FLAIR, T1, T1ce, T2) → 3 channels (TC, WT, ET) |
+| Loss | `DiceCELoss` with sigmoid (`squared_pred=True`, `smooth_nr=smooth_dr=1e-5`) |
+| Optimizer | AdamW, learning rate 1e-4, weight decay 1e-5 |
+| Scheduler | `CosineAnnealingLR` over the whole training (`T_max = epochs`) |
+| Precision | Mixed (AMP: `autocast` + `GradScaler`), automatically enabled on CUDA GPUs |
+| Patches | 128 × 128 × 128, 2 patches per patient, sampled equally on and off the tumor (`RandCropByPosNegLabeld`, `pos=1`, `neg=1`) |
+| Validation | 128³ sliding window, 50% overlap, threshold 0.5, Dice per region (TC, WT, ET) |
+ 
+### Preprocessing
+ 
+Applied during training, validation, inference and in the dashboard:
+ 
+1. loading of the 4 modalities in the order FLAIR, T1, T1ce, T2;
+2. RAS orientation;
+3. resampling to 1 mm isotropic;
+4. per-modality intensity normalization on non-zero voxels;
+5. cropping to the brain (`CropForegroundd`).
+During training, the reference mask goes through the same steps and is converted to 3 channels (TC, WT, ET).
+ 
+### Data augmentation (training only)
+ 
+| Transform | Parameters |
 |---|---|
-| Symétries (3 axes) | probabilité 0,5 chacune |
-| Transformation affine aléatoire | rotation et échelle ± 0,1, probabilité 0,3 |
-| Changement d'échelle d'intensité | facteur 0,1, probabilité 0,5 |
-| Décalage d'intensité | décalage 0,1, probabilité 0,5 |
-| Bruit gaussien | écart-type 0,01, probabilité 0,2 |
-
+| Flips (3 axes) | probability 0.5 each |
+| Random affine transform | rotation and scale ± 0.1, probability 0.3 |
+| Intensity scaling | factor 0.1, probability 0.5 |
+| Intensity shift | offset 0.1, probability 0.5 |
+| Gaussian noise | standard deviation 0.01, probability 0.2 |
+ 
 ---
-
-## 4. Performances et résultats
-
-L'entraînement a été exécuté sur **90 époques** (environ 90 s par époque sur Tesla T4, soit près de 2 h 15 au total). La validation est effectuée toutes les 5 époques sur les 15 patients de validation.
-
-> Les scores ci-dessous sont des **scores de validation** : le meilleur modèle est sélectionné sur ce même jeu. Ils sont donc légèrement optimistes par rapport à une évaluation sur des patients jamais vus (voir section 8).
-
-### Synthèse
-
-- **Meilleure performance (époque 80) : Dice moyen = 0,8486**
-- **Évolution de la perte :** 0,9256 (époque 1) → 0,2608 (époque 90)
-
-| Région tumorale | Abréviation | Meilleur Dice | Époque du pic |
+ 
+## 4. Performance and results
+ 
+Training ran for **90 epochs** (about 90 s per epoch on a Tesla T4, roughly 2 h 15 in total). Validation is performed every 5 epochs on the 15 validation patients.
+ 
+> The scores below are **validation scores**: the best model is selected on this same set. They are therefore slightly optimistic compared with an evaluation on unseen patients (see section 8).
+ 
+### Summary
+ 
+- **Best performance (epoch 80): mean Dice = 0.8486**
+- **Loss evolution:** 0.9256 (epoch 1) → 0.2608 (epoch 90)
+| Tumor region | Abbreviation | Best Dice | Peak epoch |
 |---|---|---|---|
-| Tumeur entière (Whole Tumor) | WT | 0,8792 | 70 |
-| Noyau tumoral (Tumor Core) | TC | 0,8716 | 50 |
-| Tumeur rehaussée (Enhancing Tumor) | ET | 0,7963 | 80 |
-
-La région ET est la plus difficile à segmenter : elle est petite, de forme irrégulière et très variable d'un patient à l'autre.
-
-### Progression du Dice moyen en validation
-
-| Époque | Dice moyen | Commentaire |
+| Whole Tumor | WT | 0.8792 | 70 |
+| Tumor Core | TC | 0.8716 | 50 |
+| Enhancing Tumor | ET | 0.7963 | 80 |
+ 
+The ET region is the hardest to segment: it is small, irregularly shaped and highly variable from one patient to another.
+ 
+### Mean Dice progression on validation
+ 
+| Epoch | Mean Dice | Comment |
 |---|---|---|
-| 5 | 0,4137 | Initialisation et repérage de la masse globale |
-| 20 | 0,7440 | Apprentissage accéléré des contours |
-| 50 | 0,8447 | Stabilisation des prédictions |
-| 80 | 0,8486 | Meilleur modèle, sauvegardé dans `./runs/best_metric_model.pth` |
-
-### Courbes d'entraînement
-
-Pendant l'entraînement, la perte et les Dice (moyen, TC, WT, ET) sont enregistrés pour TensorBoard dans `runs/tensorboard/` (dossier généré à l'entraînement, non inclus dans le dépôt) :
-
+| 5 | 0.4137 | Initialization and localization of the overall mass |
+| 20 | 0.7440 | Accelerated learning of contours |
+| 50 | 0.8447 | Predictions stabilize |
+| 80 | 0.8486 | Best model, saved to `./runs/best_metric_model.pth` |
+ 
+### Training curves
+ 
+During training, the loss and Dice scores (mean, TC, WT, ET) are logged for TensorBoard in `runs/tensorboard/` (folder generated during training, not included in the repository):
+ 
 ```bash
 tensorboard --logdir ./runs/tensorboard
 ```
-
+ 
 ---
-
-## 5. Inférence en ligne de commande (`inference.py`)
-
-Pour segmenter un patient et générer un masque NIfTI :
-
+ 
+## 5. Command-line inference (`inference.py`)
+ 
+To segment a patient and generate a NIfTI mask:
+ 
 ```bash
 python inference.py \
     --model_path ./runs/best_metric_model.pth \
@@ -238,47 +234,45 @@ python inference.py \
     --t2    BraTS20_Training_001_t2.nii \
     --output BraTS20_Pred_001.nii.gz
 ```
-
-Sous Windows (PowerShell), le caractère `\` de fin de ligne n'existe pas : écrivez la commande sur une seule ligne, en entourant les chemins de guillemets.
-
+ 
+On Windows (PowerShell), the trailing `\` line continuation does not exist: write the command on a single line, with paths in quotes.
+ 
 ```powershell
-python inference.py --model_path ./runs/best_metric_model.pth --flair "C:\chemin\BraTS20_Training_001_flair.nii" --t1 "C:\chemin\BraTS20_Training_001_t1.nii" --t1ce "C:\chemin\BraTS20_Training_001_t1ce.nii" --t2 "C:\chemin\BraTS20_Training_001_t2.nii" --output BraTS20_Pred_001.nii.gz
+python inference.py --model_path ./runs/best_metric_model.pth --flair "C:\path\BraTS20_Training_001_flair.nii" --t1 "C:\path\BraTS20_Training_001_t1.nii" --t1ce "C:\path\BraTS20_Training_001_t1ce.nii" --t2 "C:\path\BraTS20_Training_001_t2.nii" --output BraTS20_Pred_001.nii.gz
 ```
-
-À la fin de l'exécution, le terminal indique l'espace utilisé et la forme du masque, par exemple `espace : original, shape (240, 240, 155)`.
-
-Options facultatives :
-
-| Option | Rôle |
+ 
+At the end of the run, the terminal reports the space used and the mask shape, for example `space: original, shape (240, 240, 155)`.
+ 
+Optional arguments:
+ 
+| Option | Purpose |
 |---|---|
-| `--space original` (défaut) | Enregistre le masque dans la grille de l'IRM d'origine : il se superpose directement à l'IRM dans ITK-SNAP ou 3D Slicer. |
-| `--space processed` | Enregistre le masque dans l'espace du modèle (RAS, 1 mm isotrope, recadré). |
-| `--patch_size` | Taille des patchs de la fenêtre glissante (128 128 128 par défaut). |
-| `--no_postprocess` | Désactive le filtrage des composantes connexes. |
-
-Le script effectue les étapes suivantes :
-
-1. prétraitement des 4 modalités (voir section 3) ;
-2. inférence par fenêtre glissante (*sliding window*) de taille 128 × 128 × 128, avec 50 % de recouvrement ;
-3. seuillage de la sortie sigmoïde à 0,5 ;
-4. conservation de la plus grande composante connexe de chaque canal (suppression des îlots isolés) ;
-5. conversion des 3 canaux vers les labels BraTS (0, 1, 2, 4) ;
-6. enregistrement du masque au format NIfTI, dans l'espace choisi (`--space`).
-
-> **Espace du fichier de sortie.** Pour replacer le masque dans la grille de l'IRM d'origine, `export_utils.py` calcule la position de chaque voxel d'origine dans le volume traité (à partir des matrices d'orientation) et prend le label du voxel le plus proche. La réorientation, le rééchantillonnage et le recadrage sont ainsi compensés. Une vérification de cohérence (même centre du cerveau dans l'espace monde) est faite avant l'export ; si elle échoue, le script l'indique et enregistre le masque dans l'espace traité plutôt que de produire un fichier décalé.
-
+| `--space original` (default) | Saves the mask on the original MRI grid: it overlays directly on the MRI in ITK-SNAP or 3D Slicer. |
+| `--space processed` | Saves the mask in the model space (RAS, 1 mm isotropic, cropped). |
+| `--patch_size` | Patch size of the sliding window (128 128 128 by default). |
+| `--no_postprocess` | Disables connected-component filtering. |
+ 
+The script performs the following steps:
+ 
+1. preprocessing of the 4 modalities (see section 3);
+2. sliding-window inference with a 128 × 128 × 128 window and 50% overlap;
+3. thresholding of the sigmoid output at 0.5;
+4. keeping the largest connected component of each channel (removal of isolated islands);
+5. conversion of the 3 channels to BraTS labels (0, 1, 2, 4);
+6. saving the mask as NIfTI in the chosen space (`--space`).
+> **Output file space.** To place the mask back on the original MRI grid, `export_utils.py` computes the position of each original voxel in the processed volume (from the orientation matrices) and takes the label of the nearest voxel. Reorientation, resampling and cropping are thus compensated for. A consistency check (same brain center in world space) is performed before export; if it fails, the script reports it and saves the mask in the processed space rather than producing a shifted file.
+ 
 ---
-
-## 6. Dashboard Streamlit (`dashboard.py`)
-
-Une interface web interactive permet d'analyser visuellement la segmentation d'un patient.
-
-### Prérequis
-
-1. Placer `dashboard.py` dans le même dossier que `data_utils.py`, `inference.py` et `export_utils.py`.
-2. Vérifier que le modèle se trouve à l'emplacement `./runs/best_metric_model.pth` (chemin défini en tête de `dashboard.py`, variable `MODEL_PATH`).
-3. Créer le fichier `.streamlit/config.toml` :
-
+ 
+## 6. Streamlit dashboard (`dashboard.py`)
+ 
+An interactive web interface makes it possible to visually analyze a patient's segmentation.
+ 
+### Prerequisites
+ 
+1. Place `dashboard.py` in the same folder as `data_utils.py`, `inference.py` and `export_utils.py`.
+2. Check that the model is located at `./runs/best_metric_model.pth` (path defined at the top of `dashboard.py`, variable `MODEL_PATH`).
+3. Create the file `.streamlit/config.toml`:
 ```toml
 [theme]
 base = "light"
@@ -288,107 +282,104 @@ secondaryBackgroundColor = "#ffffff"
 textColor = "#0a0a0a"
 font = "serif"
 ```
-
-### Lancement
-
+ 
+### Launch
+ 
 ```bash
 streamlit run dashboard.py
 ```
-Le dashboard s'ouvre dans le navigateur à l'adresse `http://localhost:8501` (l'adresse exacte est affichée dans le terminal).
-
-### Utilisation
-
-1. Choisir un patient du dossier `test/image_test/` (jamais vu par le modèle).
-2. Déposer ses 4 fichiers NIfTI dans l'application. Le nom de chaque fichier doit se terminer par `_flair`, `_t1`, `_t1ce` ou `_t2`, suivi de `.nii` ou `.nii.gz`.
-3. Cliquer sur **Lancer la segmentation**.
-
-Le masque de référence correspondant (dossier `test/mask_test/`) n'est pas nécessaire au dashboard ; il sert à comparer la prédiction à la vérité terrain.
-
-### Fonctionnalités
-
-- **Coupes segmentées (2D)** : trois vues (sagittale, coronale, axiale) avec curseurs de navigation, choix de la modalité affichée, fenêtrage d'intensité adapté à chaque coupe, sur-échantillonnage et contours des régions tumorales.
-- **Cerveau 3D** : reconstruction par *marching cubes* d'une enveloppe cérébrale translucide et des trois compartiments tumoraux (œdème, noyau nécrotique, tumeur rehaussée), avec légende cliquable.
-- **4 modalités** : comparaison des quatre modalités sur une même coupe axiale.
-- **Analyse volumétrique** : volume en cm³ (= mL) de chaque compartiment, avec sa part dans la lésion, sa définition et son rôle :
-
-| Compartiment | Couleur | Définition | Rôle |
+The dashboard opens in the browser at `http://localhost:8501` (the exact address is shown in the terminal).
+ 
+### Usage
+ 
+1. Choose a patient from the `test/image_test/` folder (never seen by the model).
+2. Upload its 4 NIfTI files in the app. Each file name must end with `_flair`, `_t1`, `_t1ce` or `_t2`, followed by `.nii` or `.nii.gz`.
+3. Click **Lancer la segmentation** (Run segmentation).
+The corresponding reference mask (`test/mask_test/` folder) is not needed by the dashboard; it is used to compare the prediction with the ground truth.
+ 
+> Note: the dashboard interface labels are in French.
+ 
+### Features
+ 
+- **Segmented slices (2D)**: three views (sagittal, coronal, axial) with navigation sliders, choice of the displayed modality, intensity windowing adapted to each slice, upsampling and contours of the tumor regions.
+- **3D brain**: marching-cubes reconstruction of a translucent brain envelope and of the three tumor compartments (edema, necrotic core, enhancing tumor), with a clickable legend.
+- **4 modalities**: comparison of the four modalities on the same axial slice.
+- **Volumetric analysis**: volume in cm³ (= mL) of each compartment, with its share of the lesion, its definition and its role:
+| Compartment | Color | Definition | Role |
 |---|---|---|---|
-| Œdème péritumoral | Rouge | Gonflement du tissu cérébral autour de la tumeur | Contribue à l'effet de masse et à l'augmentation de la pression intracrânienne |
-| Noyau nécrotique | Jaune | Tissu tumoral mort ou non rehaussé au centre de la lésion | Marque le cœur de la tumeur, où les cellules manquent d'oxygène |
-| Tumeur rehaussée | Bleu | Zone active qui capte le produit de contraste (T1CE) | Associée à une activité plus agressive ; zone prioritaire pour la biopsie |
-
-Les trois compartiments sont exclusifs : leur somme donne le volume total de la lésion. Un menu dépliable donne l'équivalence avec les régions du challenge BraTS :
-
-- **WT** (tumeur entière) = œdème + noyau nécrotique + tumeur rehaussée ;
-- **TC** (noyau tumoral) = noyau nécrotique + tumeur rehaussée ;
-- **ET** (tumeur rehaussée).
-
-Les volumes sont calculés sur des images rééchantillonnées à 1 mm isotrope : 1 voxel = 1 mm³ = 0,001 cm³.
-
-### Export du masque
-
-Une fois la segmentation terminée, la section **Exporter la segmentation** propose le téléchargement du masque final au format NIfTI (`<patient>_seg_pred.nii.gz`, labels BraTS 0, 1, 2, 4). Ce fichier est replacé dans la grille de l'IRM d'origine (mêmes dimensions et même orientation que le FLAIR) : il se superpose directement à l'IRM dans ITK-SNAP ou 3D Slicer.
-
-Au clic sur le bouton, le fichier est téléchargé par le navigateur **et** une copie est enregistrée dans `test/mask_test/` (à côté de `dashboard.py`), où se trouve déjà la segmentation de référence du patient : les deux fichiers se comparent facilement (suffixes `_seg` et `_seg_pred`). Le dossier est créé s'il n'existe pas ; pour en changer, modifiez la variable `MASK_SAVE_DIR` en tête de `dashboard.py`.
-
-> L'enregistrement dans `test/mask_test/` est prévu pour une utilisation en local : le fichier est écrit sur la machine qui exécute `streamlit run`.
-
-Si l'alignement avec l'IRM d'origine ne peut pas être vérifié, le bouton n'est pas proposé et un message l'explique. Le masque dans l'espace traité (recadré sur le cerveau) reste disponible en ligne de commande avec `inference.py --space processed`, pour un usage technique ; il ne se superpose pas à l'IRM d'origine.
-
+| Peritumoral edema | Red | Swelling of the brain tissue around the tumor | Contributes to mass effect and increased intracranial pressure |
+| Necrotic core | Yellow | Dead or non-enhancing tumor tissue at the center of the lesion | Marks the heart of the tumor, where cells lack oxygen |
+| Enhancing tumor | Blue | Active area that takes up the contrast agent (T1CE) | Associated with more aggressive activity; priority area for biopsy |
+ 
+The three compartments are mutually exclusive: their sum gives the total lesion volume. A collapsible menu gives the equivalence with the BraTS challenge regions:
+ 
+- **WT** (whole tumor) = edema + necrotic core + enhancing tumor;
+- **TC** (tumor core) = necrotic core + enhancing tumor;
+- **ET** (enhancing tumor).
+Volumes are computed on images resampled to 1 mm isotropic: 1 voxel = 1 mm³ = 0.001 cm³.
+ 
+### Mask export
+ 
+Once the segmentation is finished, the **Export the segmentation** section offers to download the final mask in NIfTI format (`<patient>_seg_pred.nii.gz`, BraTS labels 0, 1, 2, 4). This file is placed back on the original MRI grid (same dimensions and orientation as the FLAIR): it overlays directly on the MRI in ITK-SNAP or 3D Slicer.
+ 
+On clicking the button, the file is downloaded by the browser **and** a copy is saved in `test/mask_test/` (next to `dashboard.py`), where the patient's reference segmentation already is: the two files are easy to compare (suffixes `_seg` and `_seg_pred`). The folder is created if it does not exist; to change it, edit the `MASK_SAVE_DIR` variable at the top of `dashboard.py`.
+ 
+> Saving to `test/mask_test/` is intended for local use: the file is written on the machine running `streamlit run`.
+ 
+If the alignment with the original MRI cannot be verified, the button is not offered and a message explains why. The mask in the processed space (cropped to the brain) remains available on the command line with `inference.py --space processed`, for technical use; it does not overlay on the original MRI.
+ 
 ---
-
-## 7. Mapping des labels BraTS
-
-Le réseau prédit 3 canaux superposés (TC, WT, ET), ensuite convertis vers les étiquettes standards de BraTS.
-
-| Label BraTS | Signification | Canaux du modèle | Couleur dans le dashboard |
+ 
+## 7. BraTS label mapping
+ 
+The network predicts 3 overlapping channels (TC, WT, ET), which are then converted to the standard BraTS labels.
+ 
+| BraTS label | Meaning | Model channels | Color in the dashboard |
 |---|---|---|---|
-| 0 | Tissu sain / fond | — | — |
-| 1 | Noyau nécrotique et tumeur non rehaussée | TC = 1 et ET = 0 | Jaune (`#facc15`) |
-| 2 | Œdème péritumoral | WT = 1 et TC = 0 | Rouge (`#dc2626`) |
-| 4 | Tumeur rehaussée (T1CE) | ET = 1 | Bleu (`#2563eb`) |
-
-Ordre des canaux de sortie : **TC, WT, ET**. Les modalités d'entrée suivent l'ordre FLAIR, T1, T1ce, T2 (défini par `MODALITIES` dans `data_utils.py`).
-
+| 0 | Healthy tissue / background | — | — |
+| 1 | Necrotic and non-enhancing tumor core | TC = 1 and ET = 0 | Yellow (`#facc15`) |
+| 2 | Peritumoral edema | WT = 1 and TC = 0 | Red (`#dc2626`) |
+| 4 | Enhancing tumor (T1CE) | ET = 1 | Blue (`#2563eb`) |
+ 
+Output channel order: **TC, WT, ET**. Input modalities follow the order FLAIR, T1, T1ce, T2 (defined by `MODALITIES` in `data_utils.py`).
+ 
 ---
-
-## 8. Limites et perspectives
-
-### Limites
-
-- **Jeu d'entraînement restreint** : seuls 100 patients (dont 15 pour la validation) ont été utilisés, alors que BraTS 2020 en compte 369 pour l'entraînement. Les performances seraient probablement meilleures avec l'ensemble des données.
-- **Évaluation optimiste et bruitée** : le modèle est sélectionné et évalué sur les mêmes 15 patients de validation, ce qui donne une estimation peu robuste. Les patients du dossier `test/` n'ont jamais été vus et permettent une évaluation indépendante, qui n'est pas encore reportée dans ce document.
-- **Domaine restreint** : entraînement sur des gliomes adultes avant traitement (BraTS 2020) uniquement. Les performances ne sont pas garanties sur d'autres scanners, protocoles, pathologies ou après chirurgie.
-- **Région ET** : le Dice (0,80) est nettement inférieur à celui de WT et TC (0,87 à 0,88).
-- **Pas de validation clinique** : les volumes affichés sont des estimations qui dépendent de la qualité de la segmentation.
-- **Espace de travail** : le modèle, le dashboard et les volumes calculés travaillent dans l'espace rééchantillonné à 1 mm et recadré. Le masque peut être exporté dans la grille d'origine, mais cet export n'a été testé que sur des volumes synthétiques et doit être vérifié visuellement sur quelques patients réels.
-
-### Perspectives
-
-- Évaluer le modèle sur les patients du dossier `test/` (Dice moyen ± écart-type par région, distance de Hausdorff à 95 % — HD95) en comparant aux segmentations de `mask_test/`.
-- Entraîner sur l'ensemble des patients de BraTS 2020, avec une validation croisée en **5 plis** (*5-fold cross-validation*).
-- Analyser les cas d'échec et tester un ensemble de modèles pour améliorer la région ET.
-
+ 
+## 8. Limitations and future work
+ 
+### Limitations
+ 
+- **Small training set**: only 100 patients (15 of them for validation) were used, whereas BraTS 2020 has 369 for training. Performance would probably improve with the full dataset.
+- **Optimistic and noisy evaluation**: the model is selected and evaluated on the same 15 validation patients, which gives a weakly robust estimate. The patients in the `test/` folder were never seen and allow an independent evaluation, which is not yet reported in this document.
+- **Restricted domain**: training on pre-treatment adult gliomas (BraTS 2020) only. Performance is not guaranteed on other scanners, protocols, pathologies or after surgery.
+- **ET region**: the Dice (0.80) is clearly lower than for WT and TC (0.87 to 0.88).
+- **No clinical validation**: the displayed volumes are estimates that depend on the quality of the segmentation.
+- **Working space**: the model, the dashboard and the computed volumes work in the resampled 1 mm, cropped space. The mask can be exported to the original grid, but this export was only tested on synthetic volumes and must be checked visually on a few real patients.
+### Future work
+ 
+- Evaluate the model on the patients in the `test/` folder (mean Dice ± standard deviation per region, 95th-percentile Hausdorff distance — HD95) by comparing with the segmentations in `mask_test/`.
+- Train on all BraTS 2020 patients, with **5-fold cross-validation**.
+- Analyze failure cases and test a model ensemble to improve the ET region.
 ---
-
-## 9. Remarques techniques
-
-- **Avertissements MONAI (`meta_tensor.py`)** : pendant l'entraînement, des messages du type `UserWarning: Setting affine, but the applied meta contains an affine` peuvent apparaître. C'est un comportement habituel de MONAI lors des transformations spatiales qui modifient la matrice d'orientation ; cela n'affecte pas l'alignement des masques pendant l'entraînement.
-- **Reprojection spatiale** : les étapes `Orientationd`, `Spacingd` et `CropForegroundd` modifient l'orientation, la résolution et la taille du volume. Pour l'export, `export_utils.py` utilise la matrice d'orientation (affine) du volume traité, suivie par MONAI à travers ces étapes, pour replacer le masque dans la grille d'origine par interpolation au plus proche voisin (labels non altérés). Cette méthode remplace l'usage d'`Invertd` de MONAI.
-- **Précision et matériel** : l'entraînement et le dashboard utilisent la précision mixte (`autocast`) lorsqu'un GPU CUDA est disponible. `inference.py` s'exécute en précision standard (float32). Tous fonctionnent aussi sur CPU, beaucoup plus lentement.
-
+ 
+## 9. Technical notes
+ 
+- **MONAI warnings (`meta_tensor.py`)**: during training, messages such as `UserWarning: Setting affine, but the applied meta contains an affine` may appear. This is usual MONAI behavior for spatial transforms that modify the orientation matrix; it does not affect mask alignment during training.
+- **Spatial reprojection**: the `Orientationd`, `Spacingd` and `CropForegroundd` steps change the orientation, resolution and size of the volume. For export, `export_utils.py` uses the orientation matrix (affine) of the processed volume, tracked by MONAI through these steps, to place the mask back on the original grid by nearest-neighbor interpolation (labels are not altered). This method replaces the use of MONAI's `Invertd`.
+- **Precision and hardware**: training and the dashboard use mixed precision (`autocast`) when a CUDA GPU is available. `inference.py` runs in standard precision (float32). All of them also run on CPU, much more slowly.
 ---
-
-## 10. Données, licence et références
-
-### Données
-
-Les données proviennent du challenge **BraTS 2020** (Brain Tumor Segmentation), dans la version disponible sur Kaggle. Elles sont soumises aux conditions d'utilisation du challenge, à consulter sur le site officiel avant toute réutilisation ou redistribution.
-
-### Références
-
+ 
+## 10. Data, license and references
+ 
+### Data
+ 
+The data come from the **BraTS 2020** challenge (Brain Tumor Segmentation), in the version available on Kaggle. They are subject to the challenge's terms of use, which should be consulted on the official website before any reuse or redistribution.
+ 
+### References
+ 
 1. Menze B. H. et al., *The Multimodal Brain Tumor Image Segmentation Benchmark (BRATS)*, IEEE Transactions on Medical Imaging, 2015.
 2. Bakas S. et al., *Advancing The Cancer Genome Atlas glioma MRI collections with expert segmentation labels and radiomic features*, Scientific Data, 2017.
 3. Bakas S. et al., *Identifying the Best Machine Learning Algorithms for Brain Tumor Segmentation, Progression Assessment, and Overall Survival Prediction in the BRATS Challenge*, arXiv:1811.02629, 2018.
-4. Myronenko A., *3D MRI brain tumor segmentation using autoencoder regularization*, BrainLes (MICCAI), 2018 — architecture dont SegResNet est inspiré.
+4. Myronenko A., *3D MRI brain tumor segmentation using autoencoder regularization*, BrainLes (MICCAI), 2018 — architecture from which SegResNet is derived.
 5. Cardoso M. J. et al., *MONAI: An open-source framework for deep learning in healthcare*, arXiv:2211.02701, 2022.
+ 
